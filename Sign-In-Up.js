@@ -1,478 +1,658 @@
-const { BlockType, ArgumentType } = window.Scratch;
+(function (Scratch) {
+    'use strict';
 
-class SignInUpExtension {
-    constructor(runtime) {
-        this.runtime = runtime;
+    class SignInUp {
+        constructor() {
+            // Authentication server
+            this.apiUrl = '';
 
-        this.server = '';
-        this.token = '';
-        this.username = '';
-        this.userId = '';
-        this.loggedIn = false;
-        this.lastResponse = '';
-        this.lastError = '';
+            // Authentication state
+            this.token = '';
+            this.username = '';
+            this.userId = '';
+            this.loggedIn = false;
 
-        // Restore session if the runtime allows localStorage.
-        try {
-            this.token = localStorage.getItem('gandi_auth_token') || '';
-            this.username = localStorage.getItem('gandi_auth_username') || '';
-            this.userId = localStorage.getItem('gandi_auth_user_id') || '';
+            // Latest request information
+            this.response = '';
+            this.error = '';
+            this.thinking = false;
+
+            // Restore saved session
+            try {
+                this.token =
+                    localStorage.getItem('gandi_auth_token') || '';
+
+                this.username =
+                    localStorage.getItem('gandi_auth_username') || '';
+
+                this.userId =
+                    localStorage.getItem('gandi_auth_user_id') || '';
+
+                if (this.token) {
+                    this.loggedIn = true;
+                }
+            } catch (e) {
+                console.warn(
+                    '[Sign-In-Up] Could not restore session.'
+                );
+            }
+        }
+
+        getInfo() {
+            return {
+                id: 'signinup',
+                name: 'Sign In / Up',
+
+                color1: '#5865F2',
+                color2: '#4752C4',
+                color3: '#3C45A5',
+
+                blocks: [
+                    {
+                        opcode: 'setApiUrl',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'set authentication URL to [URL]',
+                        arguments: {
+                            URL: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue:
+                                    'https://example.com/api'
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: 'signUp',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'sign up username [USERNAME] password [PASSWORD]',
+                        arguments: {
+                            USERNAME: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'username'
+                            },
+                            PASSWORD: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'password'
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: 'signIn',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'sign in username [USERNAME] password [PASSWORD]',
+                        arguments: {
+                            USERNAME: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'username'
+                            },
+                            PASSWORD: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'password'
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: 'logout',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'log out'
+                    },
+
+                    {
+                        opcode: 'isLoggedIn',
+                        blockType: Scratch.BlockType.BOOLEAN,
+                        text: 'logged in?'
+                    },
+
+                    {
+                        opcode: 'getUsername',
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: 'username'
+                    },
+
+                    {
+                        opcode: 'getUserId',
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: 'user ID'
+                    },
+
+                    {
+                        opcode: 'getToken',
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: 'authentication token'
+                    },
+
+                    {
+                        opcode: 'getResponse',
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: 'authentication response'
+                    },
+
+                    {
+                        opcode: 'getError',
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: 'authentication error'
+                    },
+
+                    {
+                        opcode: 'isThinking',
+                        blockType: Scratch.BlockType.BOOLEAN,
+                        text: 'authentication is processing?'
+                    },
+
+                    '---',
+
+                    {
+                        opcode: 'postJSON',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'POST JSON [DATA] to [URL]',
+                        arguments: {
+                            DATA: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: '{}'
+                            },
+                            URL: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: '/request'
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: 'getJSON',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'GET [URL]',
+                        arguments: {
+                            URL: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: '/user'
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: 'clearSession',
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: 'clear saved session'
+                    }
+                ]
+            };
+        }
+
+        setApiUrl(args) {
+            this.apiUrl = String(args.URL || '')
+                .replace(/\/+$/, '');
+        }
+
+        async signUp(args) {
+            const username = String(args.USERNAME || '');
+            const password = String(args.PASSWORD || '');
+
+            if (!this.apiUrl) {
+                this.setError(
+                    'Authentication URL has not been set.'
+                );
+                return;
+            }
+
+            if (!username.trim()) {
+                this.setError('Username is empty.');
+                return;
+            }
+
+            if (!password.trim()) {
+                this.setError('Password is empty.');
+                return;
+            }
+
+            this.thinking = true;
+            this.error = '';
+
+            try {
+                const result = await fetch(
+                    this.apiUrl + '/signup',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+
+                        body: JSON.stringify({
+                            username: username,
+                            password: password
+                        })
+                    }
+                );
+
+                const data =
+                    await result.json().catch(() => null);
+
+                if (!result.ok) {
+                    throw new Error(
+                        this.getServerError(
+                            data,
+                            'Sign-up failed.'
+                        )
+                    );
+                }
+
+                this.response =
+                    JSON.stringify(data || {});
+
+                this.processAuthentication(data);
+
+            } catch (error) {
+                this.setError(
+                    error && error.message
+                        ? error.message
+                        : String(error)
+                );
+
+            } finally {
+                this.thinking = false;
+            }
+        }
+
+        async signIn(args) {
+            const username = String(args.USERNAME || '');
+            const password = String(args.PASSWORD || '');
+
+            if (!this.apiUrl) {
+                this.setError(
+                    'Authentication URL has not been set.'
+                );
+                return;
+            }
+
+            if (!username.trim()) {
+                this.setError('Username is empty.');
+                return;
+            }
+
+            if (!password.trim()) {
+                this.setError('Password is empty.');
+                return;
+            }
+
+            this.thinking = true;
+            this.error = '';
+
+            try {
+                const result = await fetch(
+                    this.apiUrl + '/login',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+
+                        body: JSON.stringify({
+                            username: username,
+                            password: password
+                        })
+                    }
+                );
+
+                const data =
+                    await result.json().catch(() => null);
+
+                if (!result.ok) {
+                    throw new Error(
+                        this.getServerError(
+                            data,
+                            'Sign-in failed.'
+                        )
+                    );
+                }
+
+                this.response =
+                    JSON.stringify(data || {});
+
+                this.processAuthentication(data);
+
+            } catch (error) {
+                this.setError(
+                    error && error.message
+                        ? error.message
+                        : String(error)
+                );
+
+            } finally {
+                this.thinking = false;
+            }
+        }
+
+        processAuthentication(data) {
+            if (!data) {
+                throw new Error(
+                    'Server returned an empty response.'
+                );
+            }
+
+            if (data.success === false) {
+                throw new Error(
+                    data.error ||
+                    data.message ||
+                    'Authentication failed.'
+                );
+            }
+
+            if (data.token) {
+                this.token = String(data.token);
+            }
+
+            if (data.username) {
+                this.username =
+                    String(data.username);
+            }
+
+            if (data.userId !== undefined) {
+                this.userId =
+                    String(data.userId);
+            }
 
             if (this.token) {
                 this.loggedIn = true;
+                this.saveSession();
             }
-        } catch (e) {
-            console.warn('Sign-In-Up: localStorage unavailable');
         }
-    }
 
-    getInfo() {
-        return {
-            id: 'signInUp',
-            name: 'Sign In / Up',
-            color1: '#5865F2',
-            color2: '#4752C4',
-            color3: '#3C45A5',
+        logout() {
+            this.token = '';
+            this.username = '';
+            this.userId = '';
+            this.loggedIn = false;
 
-            blocks: [
-                {
-                    opcode: 'setServer',
-                    blockType: BlockType.COMMAND,
-                    text: 'set auth server to [URL]',
-                    arguments: {
-                        URL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'https://example.com/api'
-                        }
-                    }
-                },
+            this.clearSavedSession();
 
-                {
-                    opcode: 'signUp',
-                    blockType: BlockType.REPORTER,
-                    text: 'sign up username [USERNAME] password [PASSWORD]',
-                    arguments: {
-                        USERNAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'username'
-                        },
-                        PASSWORD: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'password'
-                        }
-                    }
-                },
+            this.response =
+                JSON.stringify({
+                    success: true,
+                    message: 'Logged out.'
+                });
 
-                {
-                    opcode: 'signIn',
-                    blockType: BlockType.REPORTER,
-                    text: 'sign in username [USERNAME] password [PASSWORD]',
-                    arguments: {
-                        USERNAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'username'
-                        },
-                        PASSWORD: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'password'
-                        }
-                    }
-                },
+            this.error = '';
+        }
 
-                {
-                    opcode: 'logout',
-                    blockType: BlockType.COMMAND,
-                    text: 'log out'
-                },
+        isLoggedIn() {
+            return this.loggedIn;
+        }
 
-                {
-                    opcode: 'isLoggedIn',
-                    blockType: BlockType.BOOLEAN,
-                    text: 'logged in?'
-                },
+        getUsername() {
+            return this.username;
+        }
 
-                {
-                    opcode: 'getUsername',
-                    blockType: BlockType.REPORTER,
-                    text: 'username'
-                },
+        getUserId() {
+            return this.userId;
+        }
 
-                {
-                    opcode: 'getUserId',
-                    blockType: BlockType.REPORTER,
-                    text: 'user ID'
-                },
+        getToken() {
+            return this.token;
+        }
 
-                {
-                    opcode: 'getToken',
-                    blockType: BlockType.REPORTER,
-                    text: 'authentication token'
-                },
+        getResponse() {
+            return this.response;
+        }
 
-                {
-                    opcode: 'getResponse',
-                    blockType: BlockType.REPORTER,
-                    text: 'last response'
-                },
+        getError() {
+            return this.error;
+        }
 
-                {
-                    opcode: 'getError',
-                    blockType: BlockType.REPORTER,
-                    text: 'last error'
-                },
+        isThinking() {
+            return this.thinking;
+        }
 
-                '---',
+        async postJSON(args) {
+            let url = String(args.URL || '');
+            const dataText = String(args.DATA || '{}');
 
-                {
-                    opcode: 'postJSON',
-                    blockType: BlockType.REPORTER,
-                    text: 'POST JSON [DATA] to [URL]',
-                    arguments: {
-                        DATA: {
-                            type: ArgumentType.STRING,
-                            defaultValue: '{}'
-                        },
-                        URL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: '/auth'
-                        }
-                    }
-                },
+            if (!url) {
+                this.setError('URL is empty.');
+                return;
+            }
 
-                {
-                    opcode: 'getJSON',
-                    blockType: BlockType.REPORTER,
-                    text: 'GET [URL]',
-                    arguments: {
-                        URL: {
-                            type: ArgumentType.STRING,
-                            defaultValue: '/user'
-                        }
-                    }
-                },
-
-                {
-                    opcode: 'clearSession',
-                    blockType: BlockType.COMMAND,
-                    text: 'clear saved session'
+            if (!/^https?:\/\//i.test(url)) {
+                if (!this.apiUrl) {
+                    this.setError(
+                        'Authentication URL has not been set.'
+                    );
+                    return;
                 }
-            ]
-        };
-    }
 
-    setServer(args) {
-        this.server = String(args.URL || '').replace(/\/+$/, '');
-    }
+                url =
+                    this.apiUrl +
+                    '/' +
+                    url.replace(/^\/+/, '');
+            }
 
-    async signUp(args) {
-        const username = String(args.USERNAME || '');
-        const password = String(args.PASSWORD || '');
+            let data;
 
-        if (!this.server) {
-            this.lastError = 'Authentication server has not been set.';
-            return false;
-        }
+            try {
+                data = JSON.parse(dataText);
+            } catch (error) {
+                this.setError('Invalid JSON.');
+                return;
+            }
 
-        try {
-            const response = await fetch(`${this.server}/signup`, {
-                method: 'POST',
-                headers: {
+            this.thinking = true;
+            this.error = '';
+
+            try {
+                const headers = {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    username,
-                    password
-                })
-            });
+                };
 
-            const data = await this.readResponse(response);
+                if (this.token) {
+                    headers.Authorization =
+                        'Bearer ' + this.token;
+                }
 
-            if (!response.ok || data.success === false) {
-                this.lastError =
-                    data.error ||
-                    data.message ||
-                    `Sign-up failed (${response.status})`;
+                const result = await fetch(
+                    url,
+                    {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(data)
+                    }
+                );
 
-                return false;
+                const response =
+                    await result.json().catch(
+                        () => ({})
+                    );
+
+                this.response =
+                    JSON.stringify(response);
+
+                if (!result.ok) {
+                    throw new Error(
+                        this.getServerError(
+                            response,
+                            'Request failed.'
+                        )
+                    );
+                }
+
+            } catch (error) {
+                this.setError(
+                    error && error.message
+                        ? error.message
+                        : String(error)
+                );
+
+            } finally {
+                this.thinking = false;
+            }
+        }
+
+        async getJSON(args) {
+            let url = String(args.URL || '');
+
+            if (!url) {
+                this.setError('URL is empty.');
+                return;
             }
 
-            this.processAuthResponse(data);
-            return true;
+            if (!/^https?:\/\//i.test(url)) {
+                if (!this.apiUrl) {
+                    this.setError(
+                        'Authentication URL has not been set.'
+                    );
+                    return;
+                }
 
-        } catch (error) {
-            this.lastError = error.message || String(error);
-            return false;
-        }
-    }
+                url =
+                    this.apiUrl +
+                    '/' +
+                    url.replace(/^\/+/, '');
+            }
 
-    async signIn(args) {
-        const username = String(args.USERNAME || '');
-        const password = String(args.PASSWORD || '');
+            this.thinking = true;
+            this.error = '';
 
-        if (!this.server) {
-            this.lastError = 'Authentication server has not been set.';
-            return false;
-        }
-
-        try {
-            const response = await fetch(`${this.server}/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
+            try {
+                const headers = {
                     'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    username,
-                    password
-                })
-            });
+                };
 
-            const data = await this.readResponse(response);
+                if (this.token) {
+                    headers.Authorization =
+                        'Bearer ' + this.token;
+                }
 
-            if (!response.ok || data.success === false) {
-                this.lastError =
-                    data.error ||
-                    data.message ||
-                    `Sign-in failed (${response.status})`;
+                const result = await fetch(
+                    url,
+                    {
+                        method: 'GET',
+                        headers: headers
+                    }
+                );
 
-                return false;
+                const response =
+                    await result.json().catch(
+                        () => ({})
+                    );
+
+                this.response =
+                    JSON.stringify(response);
+
+                if (!result.ok) {
+                    throw new Error(
+                        this.getServerError(
+                            response,
+                            'Request failed.'
+                        )
+                    );
+                }
+
+            } catch (error) {
+                this.setError(
+                    error && error.message
+                        ? error.message
+                        : String(error)
+                );
+
+            } finally {
+                this.thinking = false;
             }
-
-            this.processAuthResponse(data);
-            return true;
-
-        } catch (error) {
-            this.lastError = error.message || String(error);
-            return false;
-        }
-    }
-
-    processAuthResponse(data) {
-        this.lastResponse = JSON.stringify(data);
-
-        this.lastError = '';
-
-        if (data.token) {
-            this.token = String(data.token);
         }
 
-        if (data.username) {
-            this.username = String(data.username);
-        }
+        saveSession() {
+            try {
+                localStorage.setItem(
+                    'gandi_auth_token',
+                    this.token
+                );
 
-        if (data.userId !== undefined) {
-            this.userId = String(data.userId);
-        }
+                localStorage.setItem(
+                    'gandi_auth_username',
+                    this.username
+                );
 
-        if (this.token) {
-            this.loggedIn = true;
-            this.saveSession();
-        }
-    }
-
-    async readResponse(response) {
-        const text = await response.text();
-
-        if (!text) {
-            return {};
-        }
-
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            return {
-                success: response.ok,
-                response: text
-            };
-        }
-    }
-
-    logout() {
-        this.token = '';
-        this.username = '';
-        this.userId = '';
-        this.loggedIn = false;
-
-        this.clearSavedSession();
-    }
-
-    isLoggedIn() {
-        return this.loggedIn;
-    }
-
-    getUsername() {
-        return this.username;
-    }
-
-    getUserId() {
-        return this.userId;
-    }
-
-    getToken() {
-        return this.token;
-    }
-
-    getResponse() {
-        return this.lastResponse;
-    }
-
-    getError() {
-        return this.lastError;
-    }
-
-    async postJSON(args) {
-        let url = String(args.URL || '');
-        const dataString = String(args.DATA || '{}');
-
-        if (!url) {
-            this.lastError = 'No URL provided.';
-            return '';
-        }
-
-        if (!/^https?:\/\//i.test(url)) {
-            if (!this.server) {
-                this.lastError = 'No authentication server has been set.';
-                return '';
+                localStorage.setItem(
+                    'gandi_auth_user_id',
+                    this.userId
+                );
+            } catch (error) {
+                console.warn(
+                    '[Sign-In-Up] Could not save session.'
+                );
             }
-
-            url = `${this.server}/${url.replace(/^\/+/, '')}`;
         }
 
-        let data;
+        clearSavedSession() {
+            try {
+                localStorage.removeItem(
+                    'gandi_auth_token'
+                );
 
-        try {
-            data = JSON.parse(dataString);
-        } catch (error) {
-            this.lastError = 'Invalid JSON.';
-            return '';
-        }
+                localStorage.removeItem(
+                    'gandi_auth_username'
+                );
 
-        try {
-            const headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            };
-
-            if (this.token) {
-                headers.Authorization = `Bearer ${this.token}`;
+                localStorage.removeItem(
+                    'gandi_auth_user_id'
+                );
+            } catch (error) {
+                console.warn(
+                    '[Sign-In-Up] Could not clear session.'
+                );
             }
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(data)
-            });
-
-            const result = await this.readResponse(response);
-
-            this.lastResponse = JSON.stringify(result);
-
-            if (!response.ok) {
-                this.lastError =
-                    result.error ||
-                    result.message ||
-                    `Request failed (${response.status})`;
-            } else {
-                this.lastError = '';
-            }
-
-            return JSON.stringify(result);
-
-        } catch (error) {
-            this.lastError = error.message || String(error);
-            return '';
-        }
-    }
-
-    async getJSON(args) {
-        let url = String(args.URL || '');
-
-        if (!url) {
-            this.lastError = 'No URL provided.';
-            return '';
         }
 
-        if (!/^https?:\/\//i.test(url)) {
-            if (!this.server) {
-                this.lastError = 'No authentication server has been set.';
-                return '';
-            }
+        clearSession() {
+            this.token = '';
+            this.username = '';
+            this.userId = '';
+            this.loggedIn = false;
 
-            url = `${this.server}/${url.replace(/^\/+/, '')}`;
+            this.clearSavedSession();
+
+            this.response = '';
+            this.error = '';
         }
 
-        try {
-            const headers = {
-                'Accept': 'application/json'
-            };
+        setError(message) {
+            this.error = String(message);
+            this.response =
+                'Error: ' + this.error;
 
-            if (this.token) {
-                headers.Authorization = `Bearer ${this.token}`;
-            }
-
-            const response = await fetch(url, {
-                method: 'GET',
-                headers
-            });
-
-            const result = await this.readResponse(response);
-
-            this.lastResponse = JSON.stringify(result);
-
-            if (!response.ok) {
-                this.lastError =
-                    result.error ||
-                    result.message ||
-                    `Request failed (${response.status})`;
-            } else {
-                this.lastError = '';
-            }
-
-            return JSON.stringify(result);
-
-        } catch (error) {
-            this.lastError = error.message || String(error);
-            return '';
-        }
-    }
-
-    saveSession() {
-        try {
-            localStorage.setItem(
-                'gandi_auth_token',
-                this.token
+            console.error(
+                '[Sign-In-Up]',
+                this.error
             );
+        }
 
-            localStorage.setItem(
-                'gandi_auth_username',
-                this.username
-            );
+        getServerError(data, fallback) {
+            if (data) {
+                if (typeof data.error === 'string') {
+                    return data.error;
+                }
 
-            localStorage.setItem(
-                'gandi_auth_user_id',
-                this.userId
-            );
-        } catch (e) {
-            console.warn('Sign-In-Up: could not save session');
+                if (
+                    data.error &&
+                    data.error.message
+                ) {
+                    return data.error.message;
+                }
+
+                if (data.message) {
+                    return String(data.message);
+                }
+            }
+
+            return fallback;
         }
     }
 
-    clearSavedSession() {
-        try {
-            localStorage.removeItem('gandi_auth_token');
-            localStorage.removeItem('gandi_auth_username');
-            localStorage.removeItem('gandi_auth_user_id');
-        } catch (e) {
-            console.warn('Sign-In-Up: could not clear session');
-        }
-    }
+    Scratch.extensions.register(
+        new SignInUp()
+    );
 
-    clearSession() {
-        this.logout();
-        this.lastResponse = '';
-        this.lastError = '';
-    }
-}
-
-export default SignInUpExtension;
+})(Scratch);
