@@ -1,8 +1,7 @@
 (function (Scratch) {
     "use strict";
 
-    const API_DEFAULT =
-        "https://sign-in-up-api.inakuu69.workers.dev";
+    const API_DEFAULT = "https://api.here";
 
     class SignInUp {
         constructor() {
@@ -24,7 +23,7 @@
             this.banned = false;
             this._banReason = "";
             this._lastBanCheck = false;
-            this.accountStatus = "";
+            this._accountStatus = "";
         }
 
         getInfo() {
@@ -49,7 +48,7 @@
                         arguments: {
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: API_DEFAULT
+                                defaultValue: "https://api.here"
                             }
                         }
                     },
@@ -71,7 +70,7 @@
                             },
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: API_DEFAULT
+                                defaultValue: "https://api.here"
                             }
                         }
                     },
@@ -259,7 +258,7 @@
                             },
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: API_DEFAULT
+                                defaultValue: "https://api.here"
                             }
                         }
                     }
@@ -274,16 +273,13 @@
         setApiUrl(args) {
             let url = String(args.URL || "").trim();
 
-            // Remove trailing slashes
             url = url.replace(/\/+$/, "");
 
-            // Prevent empty URLs
             if (!url) {
                 this.lastError = "API URL cannot be empty";
                 return;
             }
 
-            // Only allow HTTP/HTTPS
             if (!/^https?:\/\//i.test(url)) {
                 this.lastError =
                     "API URL must start with http:// or https://";
@@ -418,7 +414,7 @@
             this.banned =
                 Boolean(result.banned);
 
-            this.accountStatus =
+            this._accountStatus =
                 result.accountStatus ||
                 (this.banned
                     ? "banned"
@@ -449,7 +445,7 @@
 
             this._loggedIn = false;
             this.banned = false;
-            this.accountStatus = "";
+            this._accountStatus = "";
             this._banReason = "";
         }
 
@@ -505,7 +501,7 @@
                 this.banned =
                     Boolean(result.banned);
 
-                this.accountStatus =
+                this._accountStatus =
                     result.accountStatus ||
                     (this.banned
                         ? "banned"
@@ -522,7 +518,7 @@
         }
 
         accountStatus() {
-            return this.accountStatus;
+            return this._accountStatus;
         }
 
         isBanned() {
@@ -627,8 +623,6 @@
 
                 let endpoint = url;
 
-                // If the supplied URL is the configured API URL,
-                // convert it to a relative endpoint.
                 if (
                     endpoint.startsWith(
                         this._apiUrl
@@ -673,7 +667,6 @@
             let url =
                 String(endpoint || "");
 
-            // Relative endpoint
             if (
                 !/^https?:\/\//i.test(url)
             ) {
@@ -773,10 +766,6 @@
             return this.lastStatus;
         }
     }
-
-    // =========================
-    // REGISTER EXTENSION
-    // =========================
 
     Scratch.extensions.register(
         new SignInUp()
