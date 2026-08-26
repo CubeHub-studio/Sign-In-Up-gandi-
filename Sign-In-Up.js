@@ -6,7 +6,11 @@
 
     class SignInUp {
         constructor() {
-            this.apiUrl = API_DEFAULT;
+            // =========================
+            // INTERNAL STATE
+            // =========================
+
+            this._apiUrl = API_DEFAULT;
 
             this.token = "";
             this.username = "";
@@ -16,8 +20,10 @@
             this.lastError = "";
             this.lastStatus = 0;
 
-            this.loggedIn = false;
+            this._loggedIn = false;
             this.banned = false;
+            this._banReason = "";
+            this._lastBanCheck = false;
             this.accountStatus = "";
         }
 
@@ -261,30 +267,60 @@
             };
         }
 
+        // =========================
+        // API URL
+        // =========================
+
         setApiUrl(args) {
-            this.apiUrl = String(args.URL || "").replace(/\/+$/, "");
+            let url = String(args.URL || "").trim();
+
+            // Remove trailing slashes
+            url = url.replace(/\/+$/, "");
+
+            // Prevent empty URLs
+            if (!url) {
+                this.lastError = "API URL cannot be empty";
+                return;
+            }
+
+            // Only allow HTTP/HTTPS
+            if (!/^https?:\/\//i.test(url)) {
+                this.lastError =
+                    "API URL must start with http:// or https://";
+                return;
+            }
+
+            this._apiUrl = url;
+            this.lastError = "";
         }
 
         apiUrl() {
-            return this.apiUrl;
+            return this._apiUrl;
         }
 
+        // =========================
+        // RAW POST JSON
+        // =========================
+
         async postJson(args) {
-            const url = String(args.URL || "");
+            const url = String(args.URL || "").trim();
             const data = String(args.DATA || "{}");
 
             this.lastError = "";
             this.lastStatus = 0;
+            this.lastResponse = "";
 
             try {
                 const parsed = JSON.parse(data);
 
                 const response = await fetch(url, {
                     method: "POST",
+
                     headers: {
                         "Content-Type": "application/json",
                         "Accept": "application/json"
                     },
+
                     body: JSON.stringify(parsed)
                 });
 
@@ -295,7 +331,8 @@
                 this.lastResponse = text;
 
                 if (!response.ok) {
-                    this.lastError = text;
+                    this.lastError =
+                        text || `HTTP ${response.status}`;
                 }
 
                 return text;
@@ -307,11 +344,18 @@
             }
         }
 
+        // =========================
+        // SIGN UP
+        // =========================
+
         async signUp(args) {
             this.lastError = "";
 
-            const username = String(args.USERNAME || "");
-            const password = String(args.PASSWORD || "");
+            const username =
+                String(args.USERNAME || "");
+
+            const password =
+                String(args.PASSWORD || "");
 
             const result = await this.request(
                 "/signup",
@@ -327,11 +371,18 @@
             }
         }
 
+        // =========================
+        // SIGN IN
+        // =========================
+
         async signIn(args) {
             this.lastError = "";
 
-            const username = String(args.USERNAME || "");
-            const password = String(args.PASSWORD || "");
+            const username =
+                String(args.USERNAME || "");
+
+            const password =
+                String(args.PASSWORD || "");
 
             const result = await this.request(
                 "/login",
@@ -347,19 +398,41 @@
             }
         }
 
+        // =========================
+        // SAVE SESSION
+        // =========================
+
         saveSession(result) {
-            this.token = result.token || "";
-            this.username = result.username || "";
-            this.userId = result.userId || "";
+            this.token =
+                result.token || "";
 
-            this.loggedIn = Boolean(this.token);
+            this.username =
+                result.username || "";
 
-            this.banned = Boolean(result.banned);
+            this.userId =
+                result.userId || "";
+
+            this._loggedIn =
+                Boolean(this.token);
+
+            this.banned =
+                Boolean(result.banned);
 
             this.accountStatus =
                 result.accountStatus ||
-                (this.banned ? "banned" : "active");
+                (this.banned
+                    ? "banned"
+                    : "active");
+
+            this._banReason =
+                result.reason ||
+                result.banReason ||
+                "";
         }
+
+        // =========================
+        // SIGN OUT
+        // =========================
 
         async signOut() {
             if (this.token) {
@@ -374,13 +447,18 @@
             this.username = "";
             this.userId = "";
 
-            this.loggedIn = false;
+            this._loggedIn = false;
             this.banned = false;
             this.accountStatus = "";
+            this._banReason = "";
         }
 
+        // =========================
+        // ACCOUNT REPORTERS
+        // =========================
+
         loggedIn() {
-            return this.loggedIn;
+            return this._loggedIn;
         }
 
         authToken() {
@@ -395,36 +473,51 @@
             return this.userId;
         }
 
+        // =========================
+        // REFRESH USER
+        // =========================
+
         async refreshUser() {
             if (!this.token) {
-                this.loggedIn = false;
+                this._loggedIn = false;
                 return;
             }
 
-            const result = await this.request(
-                "/user",
-                {},
-                true,
-                "GET"
-            );
+            const result =
+                await this.request(
+                    "/user",
+                    {},
+                    true,
+                    "GET"
+                );
 
             if (result && result.success) {
-                this.loggedIn = true;
+                this._loggedIn = true;
 
                 this.username =
-                    result.username || this.username;
+                    result.username ||
+                    this.username;
 
                 this.userId =
-                    result.userId || this.userId;
+                    result.userId ||
+                    this.userId;
 
                 this.banned =
                     Boolean(result.banned);
 
                 this.accountStatus =
                     result.accountStatus ||
-                    (this.banned ? "banned" : "active");
+                    (this.banned
+                        ? "banned"
+                        : "active");
+
+                this._banReason =
+                    result.reason ||
+                    result.banReason ||
+                    this._banReason;
+
             } else {
-                this.loggedIn = false;
+                this._loggedIn = false;
             }
         }
 
@@ -461,6 +554,10 @@
             );
         }
 
+        // =========================
+        // ADMIN UNBAN
+        // =========================
+
         async unbanUser(args) {
             const userId =
                 String(args.USERID || "");
@@ -473,6 +570,10 @@
                 true
             );
         }
+
+        // =========================
+        // CHECK BAN
+        // =========================
 
         async checkBan(args) {
             const userId =
@@ -500,7 +601,9 @@
         }
 
         banCheckResult() {
-            return Boolean(this._lastBanCheck);
+            return Boolean(
+                this._lastBanCheck
+            );
         }
 
         lastBanReason() {
@@ -518,11 +621,40 @@
             const data =
                 String(args.DATA || "{}");
 
-            return await this.request(
-                url.replace(this.apiUrl, ""),
-                JSON.parse(data),
-                true
-            );
+            try {
+                const parsed =
+                    JSON.parse(data);
+
+                let endpoint = url;
+
+                // If the supplied URL is the configured API URL,
+                // convert it to a relative endpoint.
+                if (
+                    endpoint.startsWith(
+                        this._apiUrl
+                    )
+                ) {
+                    endpoint =
+                        endpoint.substring(
+                            this._apiUrl.length
+                        );
+                }
+
+                return await this.request(
+                    endpoint,
+                    parsed,
+                    true
+                );
+
+            } catch (error) {
+                this.lastError =
+                    String(error);
+
+                this.lastResponse = "";
+                this.lastStatus = 0;
+
+                return null;
+            }
         }
 
         // =========================
@@ -538,14 +670,24 @@
             this.lastError = "";
             this.lastStatus = 0;
 
-            let url = endpoint;
+            let url =
+                String(endpoint || "");
 
-            if (!url.startsWith("http")) {
-                url = this.apiUrl + endpoint;
+            // Relative endpoint
+            if (
+                !/^https?:\/\//i.test(url)
+            ) {
+                if (!url.startsWith("/")) {
+                    url = "/" + url;
+                }
+
+                url =
+                    this._apiUrl + url;
             }
 
             const headers = {
-                "Accept": "application/json"
+                "Accept":
+                    "application/json"
             };
 
             if (method !== "GET") {
@@ -573,7 +715,10 @@
                 }
 
                 const response =
-                    await fetch(url, options);
+                    await fetch(
+                        url,
+                        options
+                    );
 
                 this.lastStatus =
                     response.status;
@@ -581,12 +726,14 @@
                 const text =
                     await response.text();
 
-                this.lastResponse = text;
+                this.lastResponse =
+                    text;
 
                 let result = null;
 
                 try {
-                    result = JSON.parse(text);
+                    result =
+                        JSON.parse(text);
                 } catch {
                     result = null;
                 }
@@ -610,6 +757,10 @@
             }
         }
 
+        // =========================
+        // API INFORMATION
+        // =========================
+
         lastResponse() {
             return this.lastResponse;
         }
@@ -622,6 +773,10 @@
             return this.lastStatus;
         }
     }
+
+    // =========================
+    // REGISTER EXTENSION
+    // =========================
 
     Scratch.extensions.register(
         new SignInUp()
