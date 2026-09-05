@@ -1,14 +1,12 @@
 (function (Scratch) {
     "use strict";
 
-    const API_DEFAULT = "https://api.here";
+    const API_DEFAULT =
+        "https://api.here";
+
 
     class SignInUp {
         constructor() {
-            // =========================
-            // INTERNAL STATE
-            // =========================
-
             this._apiUrl = API_DEFAULT;
 
             this.token = "";
@@ -20,11 +18,22 @@
             this.lastStatus = 0;
 
             this._loggedIn = false;
+
             this.banned = false;
             this._banReason = "";
+
             this._lastBanCheck = false;
-            this._accountStatus = "";
+            this._lastBanReason = "";
+
+            this._accountStatus = "Logged out";
+
+            this._adminSecret = "";
         }
+
+
+        // ====================================================
+        // BLOCKS
+        // ====================================================
 
         getInfo() {
             return {
@@ -37,10 +46,6 @@
 
                 blocks: [
 
-                    // =========================
-                    // API
-                    // =========================
-
                     {
                         opcode: "setApiUrl",
                         blockType: Scratch.BlockType.COMMAND,
@@ -48,7 +53,8 @@
                         arguments: {
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "https://api.here"
+                                defaultValue:
+                                    "https://api.here"
                             }
                         }
                     },
@@ -59,6 +65,11 @@
                         text: "API URL"
                     },
 
+
+                    // ========================================
+                    // GENERIC POST JSON
+                    // ========================================
+
                     {
                         opcode: "postJson",
                         blockType: Scratch.BlockType.REPORTER,
@@ -68,12 +79,15 @@
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "{}"
                             },
+
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "https://api.here"
+                                defaultValue:
+                                    "https://api.here"
                             }
                         }
                     },
+
 
                     {
                         opcode: "lastResponse",
@@ -93,9 +107,10 @@
                         text: "API status code"
                     },
 
-                    // =========================
+
+                    // ========================================
                     // ACCOUNT
-                    // =========================
+                    // ========================================
 
                     {
                         opcode: "signUp",
@@ -106,6 +121,7 @@
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "username"
                             },
+
                             PASSWORD: {
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "password"
@@ -122,6 +138,7 @@
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "username"
                             },
+
                             PASSWORD: {
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "password"
@@ -159,15 +176,16 @@
                         text: "User ID"
                     },
 
-                    // =========================
-                    // ACCOUNT STATUS
-                    // =========================
-
                     {
                         opcode: "refreshUser",
                         blockType: Scratch.BlockType.COMMAND,
                         text: "Refresh user"
                     },
+
+
+                    // ========================================
+                    // ACCOUNT STATUS
+                    // ========================================
 
                     {
                         opcode: "accountStatus",
@@ -187,9 +205,51 @@
                         text: "Ban reason"
                     },
 
-                    // =========================
-                    // ADMIN BAN SYSTEM
-                    // =========================
+
+                    // ========================================
+                    // SEARCH USERS
+                    // ========================================
+
+                    {
+                        opcode: "searchUsers",
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: "Search Users [QUERY]",
+                        arguments: {
+                            QUERY: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: ""
+                            }
+                        }
+                    },
+
+                    {
+                        opcode: "searchResults",
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: "Search Results"
+                    },
+
+                    {
+                        opcode: "searchResultCount",
+                        blockType: Scratch.BlockType.REPORTER,
+                        text: "Search Result Count"
+                    },
+
+
+                    // ========================================
+                    // ADMIN
+                    // ========================================
+
+                    {
+                        opcode: "setAdminSecret",
+                        blockType: Scratch.BlockType.COMMAND,
+                        text: "set admin secret to [SECRET]",
+                        arguments: {
+                            SECRET: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: ""
+                            }
+                        }
+                    },
 
                     {
                         opcode: "banUser",
@@ -200,9 +260,11 @@
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: ""
                             },
+
                             REASON: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "Violation of rules"
+                                defaultValue:
+                                    "Violation of rules"
                             }
                         }
                     },
@@ -243,9 +305,10 @@
                         text: "last ban reason"
                     },
 
-                    // =========================
-                    // AUTHENTICATED REQUEST
-                    // =========================
+
+                    // ========================================
+                    // AUTHENTICATED POST
+                    // ========================================
 
                     {
                         opcode: "authenticatedPost",
@@ -256,9 +319,11 @@
                                 type: Scratch.ArgumentType.STRING,
                                 defaultValue: "{}"
                             },
+
                             URL: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "https://api.here"
+                                defaultValue:
+                                    "https://api.here"
                             }
                         }
                     }
@@ -266,58 +331,56 @@
             };
         }
 
-        // =========================
-        // API URL
-        // =========================
 
-        setApiUrl(args) {
-            let url = String(args.URL || "").trim();
+        // ====================================================
+        // INTERNAL REQUEST
+        // ====================================================
 
-            url = url.replace(/\/+$/, "");
-
-            if (!url) {
-                this.lastError = "API URL cannot be empty";
-                return;
-            }
-
-            if (!/^https?:\/\//i.test(url)) {
-                this.lastError =
-                    "API URL must start with http:// or https://";
-                return;
-            }
-
-            this._apiUrl = url;
-            this.lastError = "";
-        }
-
-        apiUrl() {
-            return this._apiUrl;
-        }
-
-        // =========================
-        // RAW POST JSON
-        // =========================
-
-        async postJson(args) {
-            const url = String(args.URL || "").trim();
-            const data = String(args.DATA || "{}");
-
+        async _post(url, data, extraHeaders = {}) {
             this.lastError = "";
             this.lastStatus = 0;
-            this.lastResponse = "";
+
+            let body;
 
             try {
-                const parsed = JSON.parse(data);
+                body =
+                    typeof data === "string"
+                        ? JSON.parse(data)
+                        : data;
+            } catch (error) {
+                this.lastError =
+                    "Invalid JSON: " + error.message;
 
+                return null;
+            }
+
+            const headers = {
+                "Content-Type": "application/json",
+                ...extraHeaders
+            };
+
+
+            // ================================================
+            // IMPORTANT:
+            //
+            // Automatically send the current session token.
+            //
+            // This fixes:
+            //
+            // 401 Missing Authorization header
+            // ================================================
+
+            if (this.token) {
+                headers.Authorization =
+                    "Bearer " + this.token;
+            }
+
+
+            try {
                 const response = await fetch(url, {
                     method: "POST",
-
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Accept": "application/json"
-                    },
-
-                    body: JSON.stringify(parsed)
+                    headers,
+                    body: JSON.stringify(body)
                 });
 
                 this.lastStatus = response.status;
@@ -326,116 +389,187 @@
 
                 this.lastResponse = text;
 
-                if (!response.ok) {
-                    this.lastError =
-                        text || `HTTP ${response.status}`;
+                let parsed;
+
+                try {
+                    parsed = JSON.parse(text);
+                } catch {
+                    parsed = null;
                 }
 
-                return text;
+                if (!response.ok) {
+                    this.lastError =
+                        parsed?.error ||
+                        text ||
+                        `HTTP ${response.status}`;
+                }
 
+                return parsed;
             } catch (error) {
-                this.lastError = String(error);
-                this.lastResponse = "";
-                return "";
+                this.lastError =
+                    error?.message ||
+                    String(error);
+
+                return null;
             }
         }
 
-        // =========================
+
+        // ====================================================
+        // API URL
+        // ====================================================
+
+        setApiUrl(args) {
+            this._apiUrl =
+                String(args.URL || "").trim();
+        }
+
+
+        apiUrl() {
+            return this._apiUrl;
+        }
+
+
+        // ====================================================
+        // GENERIC POST JSON
+        // ====================================================
+
+        async postJson(args) {
+            const url =
+                String(args.URL || "").trim();
+
+            const data =
+                String(args.DATA || "{}");
+
+            const result =
+                await this._post(url, data);
+
+            if (result === null) {
+                return this.lastResponse || "";
+            }
+
+            return JSON.stringify(result);
+        }
+
+
+        lastResponse() {
+            return this.lastResponse;
+        }
+
+
+        apiError() {
+            return this.lastError;
+        }
+
+
+        apiStatus() {
+            return this.lastStatus;
+        }
+
+
+        // ====================================================
         // SIGN UP
-        // =========================
+        // ====================================================
 
         async signUp(args) {
-            this.lastError = "";
-
             const username =
                 String(args.USERNAME || "");
 
             const password =
                 String(args.PASSWORD || "");
 
-            const result = await this.request(
-                "/signup",
-                {
-                    username,
-                    password
-                },
-                false
-            );
+            const result =
+                await this._post(
+                    this._apiUrl + "/signup",
+                    {
+                        username,
+                        password
+                    }
+                );
 
-            if (result && result.success) {
-                this.saveSession(result);
+            if (!result) {
+                return;
+            }
+
+            if (result.success) {
+                this.token =
+                    String(result.token || "");
+
+                this.username =
+                    String(result.username || username);
+
+                this.userId =
+                    String(result.userId || "");
+
+                this._loggedIn = true;
+
+                this.banned = false;
+                this._banReason = "";
+
+                this._accountStatus = "Logged in";
             }
         }
 
-        // =========================
+
+        // ====================================================
         // SIGN IN
-        // =========================
+        // ====================================================
 
         async signIn(args) {
-            this.lastError = "";
-
             const username =
                 String(args.USERNAME || "");
 
             const password =
                 String(args.PASSWORD || "");
 
-            const result = await this.request(
-                "/login",
-                {
-                    username,
-                    password
-                },
-                false
-            );
+            const result =
+                await this._post(
+                    this._apiUrl + "/login",
+                    {
+                        username,
+                        password
+                    }
+                );
 
-            if (result && result.success) {
-                this.saveSession(result);
+            if (!result) {
+                return;
+            }
+
+            if (result.success) {
+                this.token =
+                    String(result.token || "");
+
+                this.username =
+                    String(result.username || username);
+
+                this.userId =
+                    String(result.userId || "");
+
+                this._loggedIn = true;
+
+                this.banned = false;
+                this._banReason = "";
+
+                this._accountStatus = "Logged in";
+            } else {
+                this._loggedIn = false;
+                this.token = "";
+
+                this._accountStatus =
+                    result.error || "Login failed";
             }
         }
 
-        // =========================
-        // SAVE SESSION
-        // =========================
 
-        saveSession(result) {
-            this.token =
-                result.token || "";
-
-            this.username =
-                result.username || "";
-
-            this.userId =
-                result.userId || "";
-
-            this._loggedIn =
-                Boolean(this.token);
-
-            this.banned =
-                Boolean(result.banned);
-
-            this._accountStatus =
-                result.accountStatus ||
-                (this.banned
-                    ? "banned"
-                    : "active");
-
-            this._banReason =
-                result.reason ||
-                result.banReason ||
-                "";
-        }
-
-        // =========================
+        // ====================================================
         // SIGN OUT
-        // =========================
+        // ====================================================
 
         async signOut() {
             if (this.token) {
-                await this.request(
-                    "/logout",
-                    {},
-                    true
+                await this._post(
+                    this._apiUrl + "/logout",
+                    {}
                 );
             }
 
@@ -444,34 +578,41 @@
             this.userId = "";
 
             this._loggedIn = false;
+
             this.banned = false;
-            this._accountStatus = "";
             this._banReason = "";
+
+            this._accountStatus = "Logged out";
         }
 
-        // =========================
-        // ACCOUNT REPORTERS
-        // =========================
+
+        // ====================================================
+        // LOGGED IN
+        // ====================================================
 
         loggedIn() {
             return this._loggedIn;
         }
 
+
         authToken() {
             return this.token;
         }
+
 
         getUsername() {
             return this.username;
         }
 
+
         getUserId() {
             return this.userId;
         }
 
-        // =========================
+
+        // ====================================================
         // REFRESH USER
-        // =========================
+        // ====================================================
 
         async refreshUser() {
             if (!this.token) {
@@ -479,238 +620,17 @@
                 return;
             }
 
-            const result =
-                await this.request(
-                    "/user",
-                    {},
-                    true,
-                    "GET"
-                );
-
-            if (result && result.success) {
-                this._loggedIn = true;
-
-                this.username =
-                    result.username ||
-                    this.username;
-
-                this.userId =
-                    result.userId ||
-                    this.userId;
-
-                this.banned =
-                    Boolean(result.banned);
-
-                this._accountStatus =
-                    result.accountStatus ||
-                    (this.banned
-                        ? "banned"
-                        : "active");
-
-                this._banReason =
-                    result.reason ||
-                    result.banReason ||
-                    this._banReason;
-
-            } else {
-                this._loggedIn = false;
-            }
-        }
-
-        accountStatus() {
-            return this._accountStatus;
-        }
-
-        isBanned() {
-            return this.banned;
-        }
-
-        banReason() {
-            return this._banReason || "";
-        }
-
-        // =========================
-        // ADMIN BAN
-        // =========================
-
-        async banUser(args) {
-            const userId =
-                String(args.USERID || "");
-
-            const reason =
-                String(args.REASON || "");
-
-            await this.request(
-                "/admin/ban",
-                {
-                    userId,
-                    reason
-                },
-                true
-            );
-        }
-
-        // =========================
-        // ADMIN UNBAN
-        // =========================
-
-        async unbanUser(args) {
-            const userId =
-                String(args.USERID || "");
-
-            await this.request(
-                "/admin/unban",
-                {
-                    userId
-                },
-                true
-            );
-        }
-
-        // =========================
-        // CHECK BAN
-        // =========================
-
-        async checkBan(args) {
-            const userId =
-                String(args.USERID || "");
-
-            const result =
-                await this.request(
-                    "/admin/check-ban",
-                    {
-                        userId
-                    },
-                    true
-                );
-
-            if (result) {
-                this._lastBanCheck =
-                    Boolean(result.banned);
-
-                this._banReason =
-                    result.reason || "";
-            } else {
-                this._lastBanCheck = false;
-                this._banReason = "";
-            }
-        }
-
-        banCheckResult() {
-            return Boolean(
-                this._lastBanCheck
-            );
-        }
-
-        lastBanReason() {
-            return this._banReason || "";
-        }
-
-        // =========================
-        // AUTHENTICATED POST
-        // =========================
-
-        async authenticatedPost(args) {
-            const url =
-                String(args.URL || "");
-
-            const data =
-                String(args.DATA || "{}");
-
             try {
-                const parsed =
-                    JSON.parse(data);
-
-                let endpoint = url;
-
-                if (
-                    endpoint.startsWith(
-                        this._apiUrl
-                    )
-                ) {
-                    endpoint =
-                        endpoint.substring(
-                            this._apiUrl.length
-                        );
-                }
-
-                return await this.request(
-                    endpoint,
-                    parsed,
-                    true
-                );
-
-            } catch (error) {
-                this.lastError =
-                    String(error);
-
-                this.lastResponse = "";
-                this.lastStatus = 0;
-
-                return null;
-            }
-        }
-
-        // =========================
-        // REQUEST HELPER
-        // =========================
-
-        async request(
-            endpoint,
-            body = {},
-            authenticated = false,
-            method = "POST"
-        ) {
-            this.lastError = "";
-            this.lastStatus = 0;
-
-            let url =
-                String(endpoint || "");
-
-            if (
-                !/^https?:\/\//i.test(url)
-            ) {
-                if (!url.startsWith("/")) {
-                    url = "/" + url;
-                }
-
-                url =
-                    this._apiUrl + url;
-            }
-
-            const headers = {
-                "Accept":
-                    "application/json"
-            };
-
-            if (method !== "GET") {
-                headers["Content-Type"] =
-                    "application/json";
-            }
-
-            if (
-                authenticated &&
-                this.token
-            ) {
-                headers["Authorization"] =
-                    "Bearer " + this.token;
-            }
-
-            try {
-                const options = {
-                    method,
-                    headers
-                };
-
-                if (method !== "GET") {
-                    options.body =
-                        JSON.stringify(body);
-                }
-
                 const response =
                     await fetch(
-                        url,
-                        options
+                        this._apiUrl + "/user",
+                        {
+                            method: "GET",
+                            headers: {
+                                Authorization:
+                                    "Bearer " + this.token
+                            }
+                        }
                     );
 
                 this.lastStatus =
@@ -719,53 +639,267 @@
                 const text =
                     await response.text();
 
-                this.lastResponse =
-                    text;
+                this.lastResponse = text;
 
-                let result = null;
+                const result =
+                    JSON.parse(text);
 
-                try {
-                    result =
-                        JSON.parse(text);
-                } catch {
-                    result = null;
+                if (!response.ok || !result.success) {
+                    this._loggedIn = false;
+
+                    if (response.status === 403) {
+                        this.banned = true;
+
+                        this._banReason =
+                            result.reason ||
+                            result.error ||
+                            "";
+                    }
+
+                    return;
                 }
 
-                if (!response.ok) {
-                    this.lastError =
-                        result?.error ||
-                        text ||
-                        `HTTP ${response.status}`;
-                }
+                this._loggedIn = true;
 
-                return result;
+                this.userId =
+                    String(result.user?.id || "");
+
+                this.username =
+                    String(result.user?.username || "");
+
+                this.banned =
+                    result.user?.banned === true;
+
+                this._banReason =
+                    String(
+                        result.user?.banReason || ""
+                    );
+
+                this._accountStatus =
+                    this.banned
+                        ? "Banned"
+                        : "Logged in";
 
             } catch (error) {
                 this.lastError =
+                    error?.message ||
                     String(error);
-
-                this.lastResponse = "";
-
-                return null;
             }
         }
 
-        // =========================
-        // API INFORMATION
-        // =========================
 
-        lastResponse() {
-            return this.lastResponse;
+        // ====================================================
+        // ACCOUNT STATUS
+        // ====================================================
+
+        accountStatus() {
+            return this._accountStatus;
         }
 
-        apiError() {
-            return this.lastError;
+
+        isBanned() {
+            return this.banned;
         }
 
-        apiStatus() {
-            return this.lastStatus;
+
+        banReason() {
+            return this._banReason;
+        }
+
+
+        // ====================================================
+        // SEARCH USERS
+        // ====================================================
+
+        async searchUsers(args) {
+            const query =
+                String(args.QUERY || "");
+
+            /*
+             * IMPORTANT:
+             *
+             * We POST directly to the Worker root:
+             *
+             * POST https://worker.workers.dev/
+             *
+             * {
+             *     "query": "..."
+             * }
+             *
+             * _post() automatically adds:
+             *
+             * Authorization: Bearer TOKEN
+             */
+
+            const result =
+                await this._post(
+                    this._apiUrl,
+                    {
+                        query
+                    }
+                );
+
+            if (!result) {
+                return;
+            }
+
+            if (result.success) {
+                this._searchResults =
+                    Array.isArray(result.results)
+                        ? result.results
+                        : [];
+            } else {
+                this._searchResults = [];
+            }
+        }
+
+
+        searchResults() {
+            return JSON.stringify(
+                this._searchResults || []
+            );
+        }
+
+
+        searchResultCount() {
+            return (
+                this._searchResults || []
+            ).length;
+        }
+
+
+        // ====================================================
+        // ADMIN SECRET
+        // ====================================================
+
+        setAdminSecret(args) {
+            this._adminSecret =
+                String(args.SECRET || "");
+        }
+
+
+        // ====================================================
+        // BAN USER
+        // ====================================================
+
+        async banUser(args) {
+            const userId =
+                String(args.USERID || "");
+
+            const reason =
+                String(
+                    args.REASON ||
+                    "Violation of rules"
+                );
+
+            await this._post(
+                this._apiUrl + "/admin/ban",
+                {
+                    userId,
+                    reason
+                },
+                this._adminSecret
+                    ? {
+                        "X-Admin-Secret":
+                            this._adminSecret
+                    }
+                    : {}
+            );
+        }
+
+
+        // ====================================================
+        // UNBAN USER
+        // ====================================================
+
+        async unbanUser(args) {
+            const userId =
+                String(args.USERID || "");
+
+            await this._post(
+                this._apiUrl + "/admin/unban",
+                {
+                    userId
+                },
+                this._adminSecret
+                    ? {
+                        "X-Admin-Secret":
+                            this._adminSecret
+                    }
+                    : {}
+            );
+        }
+
+
+        // ====================================================
+        // CHECK BAN
+        // ====================================================
+
+        async checkBan(args) {
+            const userId =
+                String(args.USERID || "");
+
+            const result =
+                await this._post(
+                    this._apiUrl + "/admin/check-ban",
+                    {
+                        userId
+                    },
+                    this._adminSecret
+                        ? {
+                            "X-Admin-Secret":
+                                this._adminSecret
+                        }
+                        : {}
+                );
+
+            if (!result) {
+                return;
+            }
+
+            this._lastBanCheck =
+                result.banned === true;
+
+            this._lastBanReason =
+                String(result.reason || "");
+        }
+
+
+        banCheckResult() {
+            return this._lastBanCheck;
+        }
+
+
+        lastBanReason() {
+            return this._lastBanReason;
+        }
+
+
+        // ====================================================
+        // EXPLICIT AUTHENTICATED POST
+        // ====================================================
+
+        async authenticatedPost(args) {
+            const url =
+                String(args.URL || "");
+
+            const data =
+                String(args.DATA || "{}");
+
+            const result =
+                await this._post(
+                    url,
+                    data
+                );
+
+            if (result === null) {
+                return this.lastResponse || "";
+            }
+
+            return JSON.stringify(result);
         }
     }
+
 
     Scratch.extensions.register(
         new SignInUp()
